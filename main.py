@@ -42,14 +42,15 @@ def check_control_surfaces(vehicle):
     print("Testing pitch up/down")
     vehicle.channels.overrides['2'] = vehicle.parameters['SERVO2_MAX']
     time.sleep(1)
-    vehicle.channels.overrides['2'] = vehicle.parameters['SERVO2_min']
+    vehicle.channels.overrides['2'] = vehicle.parameters['SERVO2_MIN']
     time.sleep(1)
     vehicle.channels.overrides['2'] = vehicle.parameters['SERVO2_TRIM']
     print("Testing rudder")
     vehicle.channels.overrides['4'] = vehicle.parameters['SERVO4_MAX']
     time.sleep(1)
-    vehicle.channels.overrides['4'] = vehicle.parameters['SERVO4_min']
+    vehicle.channels.overrides['4'] = vehicle.parameters['SERVO4_MIN']
     time.sleep(1)
+    vehicle.channels.overrides['4'] = vehicle.parameters['SERVO4_TRIM']
     print("Control surface tests done")
 
 
