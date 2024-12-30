@@ -111,7 +111,8 @@ def landing(v, delivery=False, land_position, tkoff_heading =0):
                                mavutil.mavlink.MAV_CMD_NAV_LAND,
                                0,1,0,0,
                                land_position[0],land_position[1],land_position[2])
-        
+    
+    land_cmds = [init_land_command, approach_waypoint, land_command]
                                     
         
 if __name__ == "__main__":
