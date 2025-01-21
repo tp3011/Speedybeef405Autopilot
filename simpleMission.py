@@ -31,8 +31,8 @@ arm_vehicle(vehicle)
 
 print("Setting simple waypoint flight...")
 #necessaire de clear la chaine de commandes pour empecher l'envoie de commandes accidentelles
-cmds = vehicle.commands
-cmds.clear()
+cmds = vehicle.commands # cmds est une liste []
+cmds.clear() 
 
 #commande qui dit a l'avion de commencer la mission envoyee (apparemment pas necessaire avec le TAKEOFF mode car ce mode commance la mission 
     # automatiquement avec la presence du NAV_TAKEOFF command)
@@ -59,7 +59,7 @@ msg = vehicle.message_factory.mission_item_int_encode(
 cmds.add(msg)
 time.sleep(1)
 #ajout d'une commande climb pour gagner de l'altitude et faire un changement de heading vers un premier waypoint 
-climb_command =vehicle.message_factory.mission_item_int_encode(0, 0, 0,
+climb_command = vehicle.message_factory.mission_item_int_encode(0, 0, 0,
                         mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
                         mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                         0, 1,
@@ -68,7 +68,7 @@ climb_command =vehicle.message_factory.mission_item_int_encode(0, 0, 0,
                         50)
 
 cmds.add(climb_command)
-
+time.sleep(1)
 # le landing necessite une commande DO_LAND_START 
 init_land_command = vehicle.message_factory.mission_item_int_encode(0, 0, 0,
                             mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
@@ -108,7 +108,7 @@ vehicle.mode = VehicleMode("TAKEOFF")
 while vehicle.mode != VehicleMode("TAKEOFF"):
     time.sleep(0.5)
 
-    vehicle.mode = VehicleMode("TAKEOFF")
+    vehicle.mode = VehicleMode("TAKEOFF") 
     
 else: print("Vehicle mode set to TAKEOFF")
 #Donne 4 seconde de takeoff pour accelerer et get airborne
