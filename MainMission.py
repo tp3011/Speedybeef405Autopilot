@@ -9,11 +9,14 @@ from main import check_GPS_status, arm_vehicle, connection_string, baud_rate
 
 #set waypoint, change mode, payload operation, takeoff, land, kill
 
+## le but de kill : en cas de perte de controle, redirige l'avion vers un point loin de la foule. 
 ######################### PROGRAM HAS TO BE UPDATED TO WORK WITH MAVUTIL 2.0 ####################################
 #################################### CURRENTLY NOT UPLOADING MISSION ##################################
 
 
-
+def KILL(v):
+    
+    pass
 
 def takeoff(v): #function that sets up take off for a given pitch angle
     vehicle.parameters["TKOFF_THR_MINACC"] = 0
