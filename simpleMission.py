@@ -22,10 +22,12 @@ while True:
     break
 #on stocke les coordonnees lat & lon de la position initiale sur la piste (pas besoin de alt puisque systeme de reference 
     # par rapport a l'altitude de Home 
-home_position = [vehicle.location.global_frame.lat,
-                 vehicle.location.global_frame.lon]
-print("Arming vehicle...")
 
+home_position = [vehicle.location.global_frame.lat,
+                 vehicle.location.global_frame.lon,
+                vehicle.location.global_frame.alt]
+print("Arming vehicle...")
+# ajouter vehicle.bearing
 #on Active les systemes de vol et permet de mettre l'avion en differents mode (TAKEOFF ou AUTO)
 arm_vehicle(vehicle)
 
