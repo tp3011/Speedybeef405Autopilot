@@ -72,19 +72,20 @@ def payload_delivery(v, DLZ_coord):
     landing(v, DLZ_coord, delivery=True)  ## Sets up touch-and-go approach
     delivery_list.append(landing)
 
-    servo_command = Command(0, 0, 0,
-                            mavutil.mavlink.MAV_FRAME_MISSION,
-                            mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
-                            0, 1, 9,  ##last digit represents servo id (change if required)
-                            1900,  ##pwm reprensenting OPEN
-                            0, 0, 0, 0, 0)
+    servo_command =  v.message_factory.command_long_encode(
+                            0, 0,  # Target system, target component
+                            mavutil.mavlink.MAV_CMD_DO_SET_SERVO,  # Command ID for SET_SERVO
+                            0,  # Confirmation
+                            9,  # Servo output channel
+                            1900,
+                               0,0,0,0,0)  # PWM value (1000-2000 µs)
     delivery_list.append(servo_command)
-    climb_command = Command(0, 0, 0,
-                            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
+    climb_command = v.message_factory.mission_item_int_encode(0, 0, 0,
+                            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
                             mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                             0, 1,
                             0, 0, 0, 0,
-                            DLZ_coord[0], DLZ_coord[1],
+                            int(DLZ_coord[0] *1e7), int(DLZ_coord[1] *1e7),
                             50)
     delivery_list.append(climb_command)
     return delivery_list
@@ -99,7 +100,7 @@ def landing(v, land_position, delivery=False, tkoff_heading=0):
                                     0, 1,
                                     0, 0, 0, 0, 0, 0, 0)
         # Will have to adjust lat/long to match better, but general idea
-        approach_waypoint = vehicle.message_factory.mission_item_int_encode(0, 0,0,
+        approach_waypoint = v.message_factory.mission_item_int_encode(0, 0,0,
                                     mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
                                     mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                                     0, 1,
@@ -117,24 +118,28 @@ def landing(v, land_position, delivery=False, tkoff_heading=0):
                         0  )       # Altitude as int32
 
     else:
-        init_land_command = Command(0, 0, 0,
-                                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
+        init_land_command = v.message_factory.mission_item_int_encode(0, 0, 0,
+                                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
                                     mavutil.mavlink.MAV_CMD_DO_LAND_START,
                                     0, 1,
                                     0, 0, 0, 0, 0, 0, 0)
         # Will have to adjust lat/long to match better, but general idea
-        approach_waypoint = Command(0, 0, 0,
-                                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
+        approach_waypoint = v.message_factory.mission_item_int_encode(0, 0,0,
+                                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
                                     mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                                     0, 1,
-                                    0, 5, 0, 0,
-                                    32.59204, -97.48064, 25)
-        # target alt must match 0 relative to DLZ
-        land_command = Command(0, 0, 0,
-                               mavutil.mavlink.MAV_FRAME_GLOBAL_ALT,
-                               mavutil.mavlink.MAV_CMD_NAV_LAND,
-                               0, 1, 0, 0,0,0,
-                               land_position[0], land_position[1], land_position[2])
+                                    0, 0, 0, tkoff_heading,
+                                    int(45.51689761061211 *1e7), int(-73.7947726427685*1e7), 25)
+
+        #1
+        land_command = v.message_factory.mission_item_int_encode(
+                        0,0, 0,  # Target system and component
+                        mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+                        mavutil.mavlink.MAV_CMD_NAV_LAND,
+                        0, 1, 0, 0, 0, 0,  # Unused parameters
+                        int(land_position[0] * 1e7),  # Convert latitude to int32
+                        int(land_position[1] * 1e7),  # Convert longitude to int32
+                        0  )       # Altitude as int32
 
     land_cmds = [init_land_command, approach_waypoint, land_command]
     return land_cmds
@@ -211,7 +216,7 @@ if __name__ == "__main__":
 
     cmds.append(throttle_cut_command)
     batch_size = 2
-    for i in range(0, len(command_list), batch_size):
+    for i in range(0, len(command_list), batch_size + 1):
             batch = command_list[i:i + batch_size]
             print(f"Uploading batch {i // batch_size + 1} with {len(batch)} commands...")
             for command in batch:
