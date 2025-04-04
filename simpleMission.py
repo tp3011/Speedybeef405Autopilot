@@ -1,143 +1,143 @@
 import time
-from dronekit import connect, VehicleMode
+from dronekit import VehicleMode, LocationGlobal, Command, connect
+
 from pymavlink import mavutil
 import threading
 import sys
 import keyboard
 
-connection_string = "COM7"#"udp:127.0.0.1:14551"
-baud_rate = 57600
-print("This program works by iteration for now. Follow the instructions to complete the arming of the vehicle.\n"
-      "Press 'c' at any time to shutdown.")
+from main import check_GPS_status, arm_vehicle, connection_string, baud_rate, check_safety_param
+
+# stop 1 : connection au vehicule necessaire pour entame les prochaines etapes
+vehicle = connect(ip=connection_string,baud= baud_rate, wait_ready=True, timeout=90)
+print(f"Vehicle connected on {connection_string} with baud rate {baud_rate}")
 time.sleep(1)
-def check_GPS_status(vehicle):
-    while vehicle.gps_0.fix_type == 1:
-        print("Waiting for fix...")
-        time.sleep(5)
-        if vehicle.gps_0.fix_type==2:
-            print("GPS signal acquired")
-            return True
 
-
-def check_safety_param(vehicle):
-    vehicle.parameters["ARMING_CHECK"]=0
-    vehicle.parameters["RTL_ALT"] = int(0)
-    vehicle.parameters["ARMING_REQUIRE"] = 0
-    vehicle.parameters["WP_RETURN_AFTER"] = 0
-    vehicle.parameters["ARSPD_USE"] = 0
-    vehicle.parameters['TKOFF_THR_MINACC'] = 0
-    vehicle.parameters['TKOFF_THR_DELAY'] = 0
-    vehicle.parameters['THR_MAX'] = 100
-    vehicle.parameters['TKOFF_THR_MAX'] = 100
-    vehicle.parameters["TKOFF_LVL_ALT"] = 10
-    vehicle.parameters["TKOFF_LVL_PITCH"] = 7
-    vehicle.parameters["PTCH_LIM_MAX_DEG"] = 15
-    vehicle.parameters["PTCH_LIM_MIN_DEG"] = -10
-    vehicle.parameters["ROLL_LIMIT_DEG"] = 15
-    vehicle.parameters["RTL_AUTOLAND"] = 2
-    time.sleep(3)
-
-    while vehicle.parameters["ARMING_CHECK"] != 0:
-        print("Waiting for arming checks to disable... Press 'c' if UNINTENDED")
-        time.sleep(5)
-    else:
-        print("Arming check disabled... Checking GPS status")
-        while vehicle.gps_0.fix_type != 2:
-            break
-            time.sleep(2)
-        else: print("GPS signal acquired. Ready to arm vehicle...")
-
-def check_control_surfaces(vehicle):
-    print("Testing control surfaces one by one...\n Testing roll right/left")
-    vehicle.channels.overrides['1'] = vehicle.parameters['SERVO1_MAX']
+print("Checking GPS and safety parameters...")
+# verifie que GPS a un fix / fonctionne avant tout. verifie ensuite que tout les parametres pertinents au vol sont bien configurer
+while True:
+    check_GPS_status(vehicle)
+    check_safety_param(vehicle)
     time.sleep(1)
-    vehicle.channels.overrides['1'] = vehicle.parameters['SERVO1_MIN']
-    time.sleep(1)
-    vehicle.channels.overrides['1'] = vehicle.parameters['SERVO1_TRIM']
-    print("Testing pitch up/down")
-    vehicle.channels.overrides['2'] = vehicle.parameters['SERVO2_MAX']
-    time.sleep(1)
-    vehicle.channels.overrides['2'] = vehicle.parameters['SERVO2_min']
-    time.sleep(1)
-    vehicle.channels.overrides['2'] = vehicle.parameters['SERVO2_TRIM']
-    print("Testing rudder")
-    vehicle.channels.overrides['4'] = vehicle.parameters['SERVO4_MAX']
-    time.sleep(1)
-    vehicle.channels.overrides['4'] = vehicle.parameters['SERVO4_min']
-    time.sleep(1)
-    print("Control surface tests done")
+    break
+# on stocke les coordonnees lat & lon de la position initiale sur la piste (pas besoin de alt puisque systeme de reference
+# par rapport a l'altitude de Home
+home_position = [vehicle.location.global_frame.lat,
+                 vehicle.location.global_frame.lon]
+print("Arming vehicle...")
 
+# on Active les systemes de vol et permet de mettre l'avion en differents mode (TAKEOFF ou AUTO)
+arm_vehicle(vehicle)
 
+print("Setting simple waypoint flight...")
+# necessaire de clear la chaine de commandes pour empecher l'envoie de commandes accidentelles
+cmds = vehicle.commands  # cmds est une liste []
+cmds.clear()
 
+# commande qui dit a l'avion de commencer la mission envoyee (apparemment pas necessaire avec le TAKEOFF mode car ce mode commance la mission
+# automatiquement avec la presence du NAV_TAKEOFF command)
+mission_start = vehicle.message_factory.command_long_encode(
+    0, 0,  # Target system, target component
+    mavutil.mavlink.MAV_CMD_MISSION_START,  # Command ID for mission start
+    0,  # Confirmation
+    0,  # Start mission from this waypoint index (default: 0)
+    0, 0, 0, 0, 0, 0  # Unused parameters
+)
 
-def arm_vehicle(vehicle):
+# commande qui indique le decollage
+msg = vehicle.message_factory.mission_item_int_encode(
+    0, 0, 0,  # Target system, target component
+    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,  # INT frame for GPS precision
+    mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,  # Takeoff command
+    0, 1,  # Confirmation, Auto-continue
+    0, 0, 0, 0,  # Unused parameters for takeoff
+    int(vehicle.location.global_frame.lat * 1e7),  # Latitude converted to int32
+    int(vehicle.location.global_frame.lon * 1e7),  # Longitude converted to int32
+    100  # Altitude in meters
+)
+# ajoute le decollage a la chaine et laisse 1 seconde pour assurer l'ajout complet
+cmds.add(msg)
+time.sleep(1)
+# ajout d'une commande climb pour gagner de l'altitude et faire un changement de heading vers un premier waypoint
+climb_command = vehicle.message_factory.mission_item_int_encode(0, 0, 0,
+                                                                mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+                                                                mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
+                                                                0, 1,
+                                                                0, 0, 0, 0,
+                                                                int(45.512747696420064 * 1e7),
+                                                                int(-73.8160586510193 * 1e7),
+                                                                50)
 
-    vehicle.mode = VehicleMode("MANUAL")
-    while vehicle.mode != VehicleMode("MANUAL"):
-        time.sleep(.5)
-    vehicle.armed = True
-    while not vehicle.armed:
-        print("Waiting to arm")
-    else:
-        print("Vehicle is armed and ready...")
+cmds.add(climb_command)
+time.sleep(1)
+# le landing necessite une commande DO_LAND_START
+init_land_command = vehicle.message_factory.mission_item_int_encode(0, 0, 0,
+                                                                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+                                                                    mavutil.mavlink.MAV_CMD_DO_LAND_START,
+                                                                    0, 1,
+                                                                    0, 0, 0, 0, 0, 0, 0)
+# waypoint place pour bien orienter l'avion dans le sens du runway et descendre altitude
+approach_waypoint = vehicle.message_factory.mission_item_int_encode(0, 0, 0,
+                                                                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+                                                                    mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
+                                                                    0, 1,
+                                                                    0, 0, 0, 0,
+                                                                    int(45.51689761061211 * 1e7),
+                                                                    int(-73.7947726427685 * 1e7), 25)
+# initie le landing ( NAV_LAND inclut des fonctions de flare up et de slow sink rate pour ralentir la descente juste avant)
+land_command = vehicle.message_factory.mission_item_int_encode(
+    0, 0, 0,  # Target system and component
+    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+    mavutil.mavlink.MAV_CMD_NAV_LAND,
+    0, 1, 0, 0, 0, 0,  # Unused parameters
+    int(home_position[0] * 1e7),  # Convert latitude to int32
+    int(home_position[1] * 1e7),  # Convert longitude to int32
+    0)  # Altitude as int32
 
-def listen_for_shutdown():
-    while True:
-        if keyboard.is_pressed("c"):
-            print("Exiting program through shutdown key...")
-            keyboard.unhook_all_hotkeys()
-            try: vehicle.close()
-            except NameError:
-                print("boo")
-            break
+cmds.add(init_land_command)
+time.sleep(.5)
+cmds.add(approach_waypoint)
+time.sleep(.5)
+cmds.add(land_command)
+time.sleep(1)
+# la commande upload permet d'envoyer la serie de commande incluse dans cmds au FC (flight controller) + 2 seconde pour upload
+cmds.upload()
+time.sleep(2)
 
-    sys.exit(0)
+# mets le vehicule en mode TAKEOFF et attend la confirmation de l'avion (repete la commande juste au cas dun refus de la part du FC)
+vehicle.mode = VehicleMode("TAKEOFF")
+while vehicle.mode != VehicleMode("TAKEOFF"):
+    time.sleep(0.5)
 
+    vehicle.mode = VehicleMode("TAKEOFF")
 
-if __name__ == "__main__":
-    print("This program works by iteration for now. Follow the instructions to complete the arming of the vehicle.\n"
-          "Press 'c' at any time to shutdown.")
+else:
+    print("Vehicle mode set to TAKEOFF")
+# Donne 4 seconde de takeoff pour accelerer et get airborne
+time.sleep(4)
 
-    listener_thread = threading.Thread (target=listen_for_shutdown, daemon=True)
-    listener_thread.start()
-    shutdown_event = threading.Event()
-    print("press 'f' to connect to vehicle")
-    while not keyboard.is_pressed('f'):
-        time.sleep(0.05)
+# Ce mode permet a l'avion de suivre les commandes envoyer a l'aide de cmds.upload()
+vehicle.mode = VehicleMode("AUTO")
+while vehicle.mode != VehicleMode("AUTO"):
+    time.sleep(0.5)
 
-    #code to connect to plane
+    vehicle.mode = VehicleMode("AUTO")
+else:
+    print("Vehicle mode set to AUTO")
+print(f"Number of waypoints: {len(cmds)}")
 
-    print("Confirmation received! Starting connection...")
+for i, cmd in enumerate(cmds):
+    print(f"Command {i}: {cmd}")
 
-    vehicle = connect(ip=connection_string, baud = baud_rate, wait_ready=True)
-    print("Connection successful")
+vehicle.send_mavlink(mission_start)
 
-    print("press 's' to disable safety checks... FOR TESTING ONLY. Press 'c' to exit test")
-    keyboard.add_hotkey("s", lambda: check_safety_param(vehicle))
-    keyboard.wait()
+time.sleep(15)
+print("shutting down flight")
+cmds.clear()
+cmds.upload()
+time.sleep(1)
 
-    print("Press 't' to test control surfaces. Press 'p' to skip testing")
-    while True:
-        if keyboard.is_pressed('t'):
-            check_control_surfaces(vehicle)
-            break
-        elif keyboard.is_pressed('p'):
-            print("Skipping testing")
-            break
+vehicle.close()
+sys.exit(0)
 
-    print("press 'a' to arm vehicle... MAKE SURE TO COMPLY WITH SAFETY REGULATIONS")
-    keyboard.add_hotkey("a", lambda : arm_vehicle(vehicle))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# allo
