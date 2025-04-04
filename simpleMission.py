@@ -1,246 +1,143 @@
 import time
-from dronekit import VehicleMode, LocationGlobal, Command, connect
-
+from dronekit import connect, VehicleMode
 from pymavlink import mavutil
 import threading
 import sys
 import keyboard
 
-from main import check_GPS_status, arm_vehicle, connection_string, baud_rate, check_safety_param
+connection_string = "COM7"#"udp:127.0.0.1:14551"
+baud_rate = 57600
+print("This program works by iteration for now. Follow the instructions to complete the arming of the vehicle.\n"
+      "Press 'c' at any time to shutdown.")
+time.sleep(1)
+def check_GPS_status(vehicle):
+    while vehicle.gps_0.fix_type == 1:
+        print("Waiting for fix...")
+        time.sleep(5)
+        if vehicle.gps_0.fix_type==2:
+            print("GPS signal acquired")
+            return True
 
 
-# set waypoint, change mode, payload operation, takeoff, land, kill
+def check_safety_param(vehicle):
+    vehicle.parameters["ARMING_CHECK"]=0
+    vehicle.parameters["RTL_ALT"] = int(0)
+    vehicle.parameters["ARMING_REQUIRE"] = 0
+    vehicle.parameters["WP_RETURN_AFTER"] = 0
+    vehicle.parameters["ARSPD_USE"] = 0
+    vehicle.parameters['TKOFF_THR_MINACC'] = 0
+    vehicle.parameters['TKOFF_THR_DELAY'] = 0
+    vehicle.parameters['THR_MAX'] = 100
+    vehicle.parameters['TKOFF_THR_MAX'] = 100
+    vehicle.parameters["TKOFF_LVL_ALT"] = 10
+    vehicle.parameters["TKOFF_LVL_PITCH"] = 7
+    vehicle.parameters["PTCH_LIM_MAX_DEG"] = 15
+    vehicle.parameters["PTCH_LIM_MIN_DEG"] = -10
+    vehicle.parameters["ROLL_LIMIT_DEG"] = 15
+    vehicle.parameters["RTL_AUTOLAND"] = 2
+    time.sleep(3)
 
-def takeoff(v):  # function that sets up take off for a given pitch angle
-
-
-
-
-    takeoff_cmd = v.message_factory.mission_item_int_encode(
-                          0, 0,0,  # Target system, target component
-                          mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,  # INT frame for GPS precision
-                          mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,  # Takeoff command
-                          0, 1,  # Confirmation, Auto-continue
-                          0, 0, 0, 0,  # Unused parameters for takeoff
-                          int(vehicle.location.global_frame.lat * 1e7),  # Latitude converted to int32
-                          int(vehicle.location.global_frame.lon * 1e7),  # Longitude converted to int32
-                          25  # Altitude in meters
-                      )
-    return takeoff_cmd
-
-
-def transit(
-        v):  # creates a transit command (go from point a to b). This doesnt serve any other purpose than to reposition plane
-    pass
-
-
-def payload_drop(v, DLZ_coord):
-    print("Setting up payload drop... Please provide target GPS location (decimal) when prompted")
-
-    drop_list = []
-
-    drop_waypoint = v.message_factory.mission_item_int_encode(0, 0, 0,
-                            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,  ##alt above sea level
-                            mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
-                            0, 1,
-                            0, 0, 0, 0,
-                            int(DLZ_coord[0] *1e7), int(DLZ_coord[1] *1e7),
-                            int(DLZ_coord[2] + 1))
-    drop_list.append(drop_waypoint)
-    servo_command = v.message_factory.command_long_encode(
-                            0, 0,  # Target system, target component
-                            mavutil.mavlink.MAV_CMD_DO_SET_SERVO,  # Command ID for SET_SERVO
-                            0,  # Confirmation
-                            9,  # Servo output channel
-                            1900,
-                               0,0,0,0,0)  # PWM value (1000-2000 µs)
-    drop_list.append(servo_command)
-    climb_command = v.message_factory.mission_item_int_encode(0, 0, 0,
-                            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-                            mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
-                            0, 1,
-                            0, 0, 0, 0,
-                            int(DLZ_coord[0] *1e7), int(DLZ_coord[1] *1e7),
-                            50)
-    drop_list.append(climb_command)
-    return drop_list
-
-
-def payload_delivery(v, DLZ_coord):
-    print("Setting up touch-and-go delivery...")
-    delivery_list = []
-    landing(v, DLZ_coord, delivery=True)  ## Sets up touch-and-go approach
-    delivery_list.append(landing)
-
-    servo_command =  v.message_factory.command_long_encode(
-                            0, 0,  # Target system, target component
-                            mavutil.mavlink.MAV_CMD_DO_SET_SERVO,  # Command ID for SET_SERVO
-                            0,  # Confirmation
-                            9,  # Servo output channel
-                            1900,
-                               0,0,0,0,0)  # PWM value (1000-2000 µs)
-    delivery_list.append(servo_command)
-    climb_command = v.message_factory.mission_item_int_encode(0, 0, 0,
-                            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-                            mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
-                            0, 1,
-                            0, 0, 0, 0,
-                            int(DLZ_coord[0] *1e7), int(DLZ_coord[1] *1e7),
-                            50)
-    delivery_list.append(climb_command)
-    return delivery_list
-
-
-def landing(v, land_position, delivery=False, tkoff_heading=0):
-    if not delivery:
-        print("Returning home and landing")
-        init_land_command = v.message_factory.mission_item_int_encode(0, 0, 0,
-                                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-                                    mavutil.mavlink.MAV_CMD_DO_LAND_START,
-                                    0, 1,
-                                    0, 0, 0, 0, 0, 0, 0)
-        # Will have to adjust lat/long to match better, but general idea
-        approach_waypoint = v.message_factory.mission_item_int_encode(0, 0,0,
-                                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-                                    mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
-                                    0, 1,
-                                    0, 0, 0, tkoff_heading,
-                                    int(45.51689761061211 *1e7), int(-73.7947726427685*1e7), 25)
-
-        #1
-        land_command = v.message_factory.mission_item_int_encode(
-                        0,0, 0,  # Target system and component
-                        mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-                        mavutil.mavlink.MAV_CMD_NAV_LAND,
-                        0, 1, 0, 0, 0, 0,  # Unused parameters
-                        int(land_position[0] * 1e7),  # Convert latitude to int32
-                        int(land_position[1] * 1e7),  # Convert longitude to int32
-                        0  )       # Altitude as int32
-
+    while vehicle.parameters["ARMING_CHECK"] != 0:
+        print("Waiting for arming checks to disable... Press 'c' if UNINTENDED")
+        time.sleep(5)
     else:
-        init_land_command = v.message_factory.mission_item_int_encode(0, 0, 0,
-                                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-                                    mavutil.mavlink.MAV_CMD_DO_LAND_START,
-                                    0, 1,
-                                    0, 0, 0, 0, 0, 0, 0)
-        # Will have to adjust lat/long to match better, but general idea
-        approach_waypoint = v.message_factory.mission_item_int_encode(0, 0,0,
-                                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-                                    mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
-                                    0, 1,
-                                    0, 0, 0, tkoff_heading,
-                                    int(45.51689761061211 *1e7), int(-73.7947726427685*1e7), 25)
+        print("Arming check disabled... Checking GPS status")
+        while vehicle.gps_0.fix_type != 2:
+            break
+            time.sleep(2)
+        else: print("GPS signal acquired. Ready to arm vehicle...")
 
-        #1
-        land_command = v.message_factory.mission_item_int_encode(
-                        0,0, 0,  # Target system and component
-                        mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-                        mavutil.mavlink.MAV_CMD_NAV_LAND,
-                        0, 1, 0, 0, 0, 0,  # Unused parameters
-                        int(land_position[0] * 1e7),  # Convert latitude to int32
-                        int(land_position[1] * 1e7),  # Convert longitude to int32
-                        0  )       # Altitude as int32
+def check_control_surfaces(vehicle):
+    print("Testing control surfaces one by one...\n Testing roll right/left")
+    vehicle.channels.overrides['1'] = vehicle.parameters['SERVO1_MAX']
+    time.sleep(1)
+    vehicle.channels.overrides['1'] = vehicle.parameters['SERVO1_MIN']
+    time.sleep(1)
+    vehicle.channels.overrides['1'] = vehicle.parameters['SERVO1_TRIM']
+    print("Testing pitch up/down")
+    vehicle.channels.overrides['2'] = vehicle.parameters['SERVO2_MAX']
+    time.sleep(1)
+    vehicle.channels.overrides['2'] = vehicle.parameters['SERVO2_min']
+    time.sleep(1)
+    vehicle.channels.overrides['2'] = vehicle.parameters['SERVO2_TRIM']
+    print("Testing rudder")
+    vehicle.channels.overrides['4'] = vehicle.parameters['SERVO4_MAX']
+    time.sleep(1)
+    vehicle.channels.overrides['4'] = vehicle.parameters['SERVO4_min']
+    time.sleep(1)
+    print("Control surface tests done")
 
-    land_cmds = [init_land_command, approach_waypoint, land_command]
-    return land_cmds
+
+
+
+def arm_vehicle(vehicle):
+
+    vehicle.mode = VehicleMode("MANUAL")
+    while vehicle.mode != VehicleMode("MANUAL"):
+        time.sleep(.5)
+    vehicle.armed = True
+    while not vehicle.armed:
+        print("Waiting to arm")
+    else:
+        print("Vehicle is armed and ready...")
+
+def listen_for_shutdown():
+    while True:
+        if keyboard.is_pressed("c"):
+            print("Exiting program through shutdown key...")
+            keyboard.unhook_all_hotkeys()
+            try: vehicle.close()
+            except NameError:
+                print("boo")
+            break
+
+    sys.exit(0)
 
 
 if __name__ == "__main__":
-    vehicle = connect(ip=connection_string, baud=baud_rate, wait_ready=True)
-    print(f'Vehicle connected on {connection_string} with baud rate {baud_rate}')
+    print("This program works by iteration for now. Follow the instructions to complete the arming of the vehicle.\n"
+          "Press 'c' at any time to shutdown.")
 
+    listener_thread = threading.Thread (target=listen_for_shutdown, daemon=True)
+    listener_thread.start()
+    shutdown_event = threading.Event()
+    print("press 'f' to connect to vehicle")
+    while not keyboard.is_pressed('f'):
+        time.sleep(0.05)
+
+    #code to connect to plane
+
+    print("Confirmation received! Starting connection...")
+
+    vehicle = connect(ip=connection_string, baud = baud_rate, wait_ready=True)
+    print("Connection successful")
+
+    print("press 's' to disable safety checks... FOR TESTING ONLY. Press 'c' to exit test")
+    keyboard.add_hotkey("s", lambda: check_safety_param(vehicle))
+    keyboard.wait()
+
+    print("Press 't' to test control surfaces. Press 'p' to skip testing")
     while True:
-        GPS_fix = check_GPS_status(vehicle)
-        check_safety_param(vehicle)
-        break
-
-
-    arm_vehicle(vehicle)
-
-    print("Plotting mission route...")
-    time.sleep(1)
-    cmds = []
-    cmd = vehicle.commands
-    cmd.clear()
-    cmd.upload()
-    time.sleep(2)
-
-    # getting DLZ coordinates
-    print("Please provide target GPS location (decimal) when prompted")
-    target_lat = 45.51154476553373#float(input("Please provide target latitude :\n"))
-    target_long = -73.76447441328253#float(input("Target longitude:\n"))
-    target_alt = 25#float(input("Target altitude (for payload DROP) above sea level in meters :\n"))
-    target_pos = [target_lat, target_long, target_alt]
-
-    # getting vehicle initial position (im sure theres a better way)
-    home_position = [vehicle.location.global_frame.lat,
-                     vehicle.location.global_frame.lon]  # alt = 0 in plane RELATIVE frame
-    # inserting Takeoff command in queue
-    cmds.append(takeoff(vehicle))
-    time.sleep(2)
-
-
-
-
-    print("multiple delivery methods available: press 'a' for drop and 'b' for landing delivery \n")
-    while True:
-        if keyboard.is_pressed('a'):
-            command_list = payload_drop(vehicle, target_pos)
+        if keyboard.is_pressed('t'):
+            check_control_surfaces(vehicle)
             break
-        elif keyboard.is_pressed('b'):
-            command_list = payload_delivery(vehicle, target_pos)
+        elif keyboard.is_pressed('p'):
+            print("Skipping testing")
             break
 
-    for i in command_list:
-        cmds.append(i)
-        time.sleep(1)
-
-    time.sleep(2)
-
-    ## should add a section for pick up... but risky if autonomous
-
-    # final landing sequence
-    landing_sequence = landing(vehicle, home_position)
-    for i in landing_sequence:
-        cmds.append(i)
-        time.sleep(1)
-    print("Landing sequence added... Mission route complete and ready for review")
-    # setting throttle to 0 after landing
-    throttle_cut_command = vehicle.message_factory.command_long_encode(
-                                   0, 0,  # Target system, target component
-                                   mavutil.mavlink.MAV_CMD_DO_SET_SERVO,  # C
-                                   0,  # Confirmation
-                                   9,  # Servo output channel
-                                   0,
-                                   0,0,0,0,0)  # PWM value (1000-2000 µs)
-
-    cmds.append(throttle_cut_command)
-    batch_size = 2
-    for i in range(0, len(command_list), batch_size + 1):
-            batch = command_list[i:i + batch_size]
-            print(f"Uploading batch {i // batch_size + 1} with {len(batch)} commands...")
-            for command in batch:
-                cmd.add(command)
-                print(command)
-            cmd.upload()
-            vehicle.commands.wait_ready()
-            time.sleep(2)  # Delay to allow processing
-            cmd.clear()
+    print("press 'a' to arm vehicle... MAKE SURE TO COMPLY WITH SAFETY REGULATIONS")
+    keyboard.add_hotkey("a", lambda : arm_vehicle(vehicle))
 
 
 
 
-    time.sleep(2)
 
 
-    vehicle.mode = VehicleMode("TAKEOFF")
-    while vehicle.mode!= VehicleMode("TAKEOFF"):
-        time.sleep(.5)
-    else:
-        time.sleep(4)
-        vehicle.mode = VehicleMode("AUTO")
-        while vehicle.mode != VehicleMode("AUTO"):
-            time.sleep(.5)
 
-####1
-#Command(0, 0, 0, mavutil.mavlink.MAV_FRAME_GLOBAL_ALT,mavutil.mavlink.MAV_CMD_NAV_LAND,0, 1, 0, 0,0,0,land_position[0], land_position[1], land_position[2])
+
+
+
+
+
+
+
