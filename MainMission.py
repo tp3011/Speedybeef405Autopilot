@@ -1,7 +1,7 @@
 import time
 from dronekit import VehicleMode, LocationGlobal, Command, connect
 from numpy import pi, cos, sin
-
+from DataAcquisition import draw
 from pymavlink import mavutil
 import threading
 import sys
@@ -9,14 +9,23 @@ import keyboard
 
 from main import check_GPS_status, arm_vehicle, connection_string, baud_rate, check_safety_param
 
-r_earth = 6378*10**3 #meters
-displacement = 75.0 #meters
+altitude = 25
+r_earth = 6378*10**3 #in meters
+displacement = 50.0 #meters
 # set waypoint, change mode, payload operation, takeoff, land, kill
 
-def coordonate_change(old_lat, old_lon, dy, dx):
+
+
+def coordonate_change(old_lat, old_lon, heading, dist = displacement):
+    dy,dx = calculate_translation(heading, dist)
     new_lat = old_lat + (dy / r_earth) * (180 / pi)
     new_long = old_lon + (dx / r_earth) * (180 / pi) / cos(new_lat * pi / 180)
     return  new_lat, new_long
+def calculate_translation(heading, dist):
+    dy = dist*cos(heading*pi/180)
+    dx = dist*sin(heading*pi/180)
+    return dy,dx
+
 
 def takeoff(v):  # function that sets up take off
 
@@ -28,18 +37,19 @@ def takeoff(v):  # function that sets up take off
                           0, 0, 0, 0,  # Unused parameters for takeoff
                           int(vehicle.location.global_frame.lat * 1e7),  # Latitude converted to int32
                           int(vehicle.location.global_frame.lon * 1e7),  # Longitude converted to int32
-                          25  # Altitude in meters
+                          altitude  # Altitude in meters
                       )
     return takeoff_cmd
 
 
 def transit(v):  # creates a transit command (go from point a to b). This doesnt serve any other purpose than to reposition plane
+    #undefined for now
     pass
 
 
 def payload_drop(v, DLZ_coord):
     print("Setting up payload drop... Please provide target GPS location (decimal) when prompted")
-
+    drop_lat, drop_long = coordonate_change(DLZ_coord[0],DLZ_coord[1],to_heading, dis=1)
     drop_list = []
 
     drop_waypoint = v.message_factory.mission_item_int_encode(0, 0, 0,
@@ -47,8 +57,8 @@ def payload_drop(v, DLZ_coord):
                             mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                             0, 1,
                             0, 0, 0, 0,
-                            int(DLZ_coord[0] *1e7), int(DLZ_coord[1] *1e7),
-                            int(DLZ_coord[2] + 1))
+                            int(drop_lat *1e7), int(drop_long *1e7),
+                            int(DLZ_coord[2] + 1)) ##DLZ altitude +1meters
     drop_list.append(drop_waypoint)
     servo_command = v.message_factory.command_long_encode(
                             0, 0,  # Target system, target component
@@ -56,7 +66,7 @@ def payload_drop(v, DLZ_coord):
                             0,  # Confirmation
                             9,  # Servo output channel
                             1900,
-                               0,0,0,0,0)  # PWM value (1000-2000 µs)
+                            0,0,0,0,0)  # PWM value (1000-2000 µs)
     drop_list.append(servo_command)
     climb_command = v.message_factory.mission_item_int_encode(0, 0, 0,
                             mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
@@ -64,7 +74,7 @@ def payload_drop(v, DLZ_coord):
                             0, 1,
                             0, 0, 0, 0,
                             int(DLZ_coord[0] *1e7), int(DLZ_coord[1] *1e7),
-                            50)
+                            altitude)
     drop_list.append(climb_command)
     return drop_list
 
@@ -72,29 +82,31 @@ def payload_drop(v, DLZ_coord):
 def payload_delivery(v, DLZ_coord):
     print("Setting up touch-and-go delivery...")
     delivery_list = []
-    landing(v, DLZ_coord, delivery=True)  ## Sets up touch-and-go approach
-    delivery_list.append(landing)
+      ## Sets up touch-and-go approach
+    [delivery_list.append(x) for x in landing(v, DLZ_coord,to_heading+180, delivery=True)]
 
-    servo_command = v.message_factory.command_long_encode(0, 0,
-                            mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
-                            0, 9,  ##last digit represents servo id (change if required)
-                            1900,  ##pwm reprensenting OPEN
-                            0, 0, 0, 0, 0)
+    servo_command = v.message_factory.command_long_encode(
+                            0, 0,  # Target system, target component
+                            mavutil.mavlink.MAV_CMD_DO_SET_SERVO,  # Command ID for SET_SERVO
+                            0,  # Confirmation
+                            9,  # Servo output channel
+                            1900,
+                            0,0,0,0,0)  # PWM value (1000-2000 µs)
     delivery_list.append(servo_command)
-    climb_command = Command(0, 0, 0,
-                            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
+    climb_command = v.message_factory.mission_item_int_encode(0, 0, 0,
+                            mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
                             mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                             0, 1,
                             0, 0, 0, 0,
-                            int(DLZ_coord[0]*1e7), int(DLZ_coord[1]*1e7),
-                            50)
+                            int(DLZ_coord[0] *1e7), int(DLZ_coord[1] *1e7),
+                            altitude)
     delivery_list.append(climb_command)
     return delivery_list
 
 
-def landing(v, land_position, delivery=False, heading=0):
+def landing(v, land_position,heading, delivery=False ):
     if not delivery:
-        
+        app_lat, app_lon = coordonate_change(land_position[0], land_position[1], to_heading+180)
         print("Returning home and landing")
         init_land_command = v.message_factory.mission_item_int_encode(0, 0, 0,
                                     mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
@@ -107,7 +119,7 @@ def landing(v, land_position, delivery=False, heading=0):
                                     mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                                     0, 1,
                                     0, 0, 0, heading,
-                                    int(45.51689761061211 *1e7), int(-73.7947726427685*1e7), 25)
+                                    int(app_lat *1e7), int(app_lon *1e7), int(altitude/2))
 
         #1
         land_command = v.message_factory.mission_item_int_encode(
@@ -117,13 +129,11 @@ def landing(v, land_position, delivery=False, heading=0):
                         0, 1, 0, 0, 0, 0,  # Unused parameters
                         int(land_position[0] * 1e7),  # Convert latitude to int32
                         int(land_position[1] * 1e7),  # Convert longitude to int32
-                        0  )       # Altitude as int32
+                        0 )       # Altitude as int32
 
     else:
-        ###calculating approach waypoints
-        x=displacement*sin(to_heading *pi/180)
-        y = displacement*cos(to_heading *pi/180)
-        app_lat, app_lon = coordonate_change(land_position[0],land_position[1], x, y)
+
+        app_lat, app_lon = coordonate_change(land_position[0],land_position[1], to_heading)
         init_land_command = v.message_factory.mission_item_int_encode(0, 0, 0,
                                     mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
                                     mavutil.mavlink.MAV_CMD_DO_LAND_START,
@@ -140,7 +150,7 @@ def landing(v, land_position, delivery=False, heading=0):
         land_command = v.message_factory.mission_item_int_encode(0, 0, 0,
                                mavutil.mavlink.MAV_FRAME_GLOBAL_ALT,
                                mavutil.mavlink.MAV_CMD_NAV_LAND,
-                               0, 1, 
+                               0, 1,
                                0, 0,0,0,
                                land_position[0], land_position[1], land_position[2])
 
@@ -174,13 +184,14 @@ if __name__ == "__main__":
     target_long = -73.76447441328253#float(input("Target longitude:\n"))
     target_alt = 25#float(input("Target altitude (for payload DROP) above sea level in meters :\n"))
     target_pos = [target_lat, target_long, target_alt]
-    
+
     # getting vehicle initial position
     home_position = [vehicle.location.global_frame.lat,
                      vehicle.location.global_frame.lon]  # alt = 0 in plane RELATIVE frame
     to_heading = vehicle.heading
     # inserting Takeoff command in queue
-
+    draw()
+    time.sleep(5)
     cmds.append(takeoff(vehicle))
     time.sleep(2)
 
@@ -249,4 +260,3 @@ if __name__ == "__main__":
 
 ####1
 #Command(0, 0, 0, mavutil.mavlink.MAV_FRAME_GLOBAL_ALT,mavutil.mavlink.MAV_CMD_NAV_LAND,0, 1, 0, 0,0,0,land_position[0], land_position[1], land_position[2])
-    
