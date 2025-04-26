@@ -8,6 +8,11 @@ import keyboard
 
 from main import check_GPS_status, arm_vehicle, connection_string, baud_rate, check_safety_param
 
+
+a = int(12.3456789 * 1e7) #### Modifier les valeurs pour les bonnes coordonnés gps
+b= int(-98.7654321 * 1e7) #### Modifier les valeurs pour les bonnes coordonnés gps
+
+Waypoint = [a,b]
 # stop 1 : connection au vehicule necessaire pour entame les prochaines etapes
 vehicle = connect(ip=connection_string,baud= baud_rate, wait_ready=True, timeout=90)
 print(f"Vehicle connected on {connection_string} with baud rate {baud_rate}")
@@ -20,10 +25,8 @@ while True:
     check_safety_param(vehicle)
     time.sleep(1)
     break
-# on stocke les coordonnees lat & lon de la position initiale sur la piste (pas besoin de alt puisque systeme de reference
-# par rapport a l'altitude de Home
-home_position = [vehicle.location.global_frame.lat,
-                 vehicle.location.global_frame.lon]
+
+
 print("Arming vehicle...")
 
 # on Active les systemes de vol et permet de mettre l'avion en differents mode (TAKEOFF ou AUTO)
@@ -43,7 +46,10 @@ mission_start = vehicle.message_factory.command_long_encode(
     0,  # Start mission from this waypoint index (default: 0)
     0, 0, 0, 0, 0, 0  # Unused parameters
 )
-
+# on stocke les coordonnees lat & lon de la position initiale sur la piste (pas besoin de alt puisque systeme de reference
+# par rapport a l'altitude de Home
+home_position = [vehicle.location.global_frame.lat,
+                 vehicle.location.global_frame.lon]
 # commande qui indique le decollage
 msg = vehicle.message_factory.mission_item_int_encode(
     0, 0, 0,  # Target system, target component
@@ -64,8 +70,8 @@ climb_command = vehicle.message_factory.mission_item_int_encode(0, 0, 0,
                                                                 mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
                                                                 0, 1,
                                                                 0, 0, 0, 0,
-                                                                int(45.512747696420064 * 1e7),
-                                                                int(-73.8160586510193 * 1e7),
+                                                                Waypoint[0],
+                                                                Waypoint[1],
                                                                 50)
 
 cmds.add(climb_command)
@@ -76,14 +82,8 @@ init_land_command = vehicle.message_factory.mission_item_int_encode(0, 0, 0,
                                                                     mavutil.mavlink.MAV_CMD_DO_LAND_START,
                                                                     0, 1,
                                                                     0, 0, 0, 0, 0, 0, 0)
-# waypoint place pour bien orienter l'avion dans le sens du runway et descendre altitude
-approach_waypoint = vehicle.message_factory.mission_item_int_encode(0, 0, 0,
-                                                                    mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
-                                                                    mavutil.mavlink.MAV_CMD_NAV_WAYPOINT,
-                                                                    0, 1,
-                                                                    0, 0, 0, 0,
-                                                                    int(45.51689761061211 * 1e7),
-                                                                    int(-73.7947726427685 * 1e7), 25)
+
+
 # initie le landing ( NAV_LAND inclut des fonctions de flare up et de slow sink rate pour ralentir la descente juste avant)
 land_command = vehicle.message_factory.mission_item_int_encode(
     0, 0, 0,  # Target system and component
@@ -96,25 +96,24 @@ land_command = vehicle.message_factory.mission_item_int_encode(
 
 cmds.add(init_land_command)
 time.sleep(.5)
-cmds.add(approach_waypoint)
-time.sleep(.5)
+
 cmds.add(land_command)
 time.sleep(1)
 # la commande upload permet d'envoyer la serie de commande incluse dans cmds au FC (flight controller) + 2 seconde pour upload
-cmds.upload()
+cmds.upload(timeout = 180)
 time.sleep(2)
 
 # mets le vehicule en mode TAKEOFF et attend la confirmation de l'avion (repete la commande juste au cas dun refus de la part du FC)
 vehicle.mode = VehicleMode("TAKEOFF")
 while vehicle.mode != VehicleMode("TAKEOFF"):
-    time.sleep(0.5)
+    time.sleep(1)
 
     vehicle.mode = VehicleMode("TAKEOFF")
 
 else:
     print("Vehicle mode set to TAKEOFF")
 # Donne 4 seconde de takeoff pour accelerer et get airborne
-time.sleep(4)
+time.sleep(6)
 
 # Ce mode permet a l'avion de suivre les commandes envoyer a l'aide de cmds.upload()
 vehicle.mode = VehicleMode("AUTO")
@@ -129,7 +128,7 @@ print(f"Number of waypoints: {len(cmds)}")
 for i, cmd in enumerate(cmds):
     print(f"Command {i}: {cmd}")
 
-vehicle.send_mavlink(mission_start)
+
 
 time.sleep(15)
 print("shutting down flight")
