@@ -9,8 +9,8 @@ import keyboard
 from main import check_GPS_status, arm_vehicle, connection_string, baud_rate, check_safety_param
 
 
-a = int(12.3456789 * 1e7) #### Modifier les valeurs pour les bonnes coordonnés gps
-b= int(-98.7654321 * 1e7) #### Modifier les valeurs pour les bonnes coordonnés gps
+a = int(12.3456789 * 1e7) #### Modifier les valeurs pour les bonnes coordonnés lat gps
+b= int(-98.7654321 * 1e7) #### Modifier les valeurs pour les bonnes coordonnés lon gps
 
 Waypoint = [a,b]
 # stop 1 : connection au vehicule necessaire pour entame les prochaines etapes
