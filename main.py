@@ -20,24 +20,24 @@ def check_GPS_status(vehicle):
 
 
 def check_safety_param(vehicle):
-    vehicle.parameters["ARMING_CHECK"]=0
+    vehicle.parameters["ARMING_CHECK"]=332
     vehicle.parameters["RTL_ALT"] = int(0)
     vehicle.parameters["ARMING_REQUIRE"] = 0
     vehicle.parameters["WP_RETURN_AFTER"] = 0
     vehicle.parameters["ARSPD_USE"] = 0
     vehicle.parameters['TKOFF_THR_MINACC'] = 0
     vehicle.parameters['TKOFF_THR_DELAY'] = 0
-    vehicle.parameters['THR_MAX'] = 100
-    vehicle.parameters['TKOFF_THR_MAX'] = 100
+    vehicle.parameters['THR_MAX'] = 80
+    vehicle.parameters['TKOFF_THR_MAX'] = 95
     vehicle.parameters["TKOFF_LVL_ALT"] = 10
-    vehicle.parameters["TKOFF_LVL_PITCH"] = 7
+    vehicle.parameters["TKOFF_LVL_PITCH"] = 15
     vehicle.parameters["PTCH_LIM_MAX_DEG"] = 15
-    vehicle.parameters["PTCH_LIM_MIN_DEG"] = -10
+    vehicle.parameters["PTCH_LIM_MIN_DEG"] = -15
     vehicle.parameters["ROLL_LIMIT_DEG"] = 15
     vehicle.parameters["RTL_AUTOLAND"] = 2
     time.sleep(3)
 
-    while vehicle.parameters["ARMING_CHECK"] != 0:
+    while vehicle.parameters["ARMING_CHECK"] != 332:
         print("Waiting for arming checks to disable... Press 'c' if UNINTENDED")
         time.sleep(5)
     else:
@@ -72,8 +72,8 @@ def check_control_surfaces(vehicle):
 
 def arm_vehicle(vehicle):
 
-    vehicle.mode = VehicleMode("MANUAL")
-    while vehicle.mode != VehicleMode("MANUAL"):
+    vehicle.mode = VehicleMode("AUTO")
+    while vehicle.mode != VehicleMode("AUTO"):
         time.sleep(.5)
     vehicle.armed = True
     while not vehicle.armed:
