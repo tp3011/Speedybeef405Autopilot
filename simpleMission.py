@@ -130,8 +130,8 @@ for i, cmd in enumerate(cmds):
 
 
 
-while True :
-    time.sleep(5)
+print("Press x to end mission") 
+keyboard.wait("x")
     
 print("shutting down flight")
 cmds.clear()
