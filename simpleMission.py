@@ -59,7 +59,7 @@ msg = vehicle.message_factory.mission_item_int_encode(
     0, 0, 0, 0,  # Unused parameters for takeoff
     int(vehicle.location.global_frame.lat * 1e7),  # Latitude converted to int32
     int(vehicle.location.global_frame.lon * 1e7),  # Longitude converted to int32
-    100  # Altitude in meters
+    5  # Altitude in meters
 )
 # ajoute le decollage a la chaine et laisse 1 seconde pour assurer l'ajout complet
 cmds.add(msg)
@@ -72,7 +72,7 @@ climb_command = vehicle.message_factory.mission_item_int_encode(0, 0, 0,
                                                                 0, 0, 0, 0,
                                                                 Waypoint[0],
                                                                 Waypoint[1],
-                                                                50)
+                                                            5)
 
 cmds.add(climb_command)
 time.sleep(1)
@@ -130,7 +130,9 @@ for i, cmd in enumerate(cmds):
 
 
 
-time.sleep(15)
+while True :
+    time.sleep(5)
+    
 print("shutting down flight")
 cmds.clear()
 cmds.upload()
