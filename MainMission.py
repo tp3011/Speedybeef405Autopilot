@@ -9,7 +9,7 @@ import keyboard
 
 from main import check_GPS_status, arm_vehicle, connection_string, baud_rate, check_safety_param
 
-altitude = 25
+altitude = 15
 r_earth = 6378*10**3 #in meters
 displacement = 50.0 #meters
 # set waypoint, change mode, payload operation, takeoff, land, kill
@@ -148,7 +148,7 @@ def landing(v, land_position,heading, delivery=False ):
                                     int(app_lat *1e7), int(app_lon*1e7), 25)
         # target alt must match 0 relative to DLZ
         land_command = v.message_factory.mission_item_int_encode(0, 0, 0,
-                               mavutil.mavlink.MAV_FRAME_GLOBAL_ALT,
+                               mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,
                                mavutil.mavlink.MAV_CMD_NAV_LAND,
                                0, 1,
                                0, 0,0,0,
@@ -180,9 +180,9 @@ if __name__ == "__main__":
 
     # getting DLZ coordinates
     print("Please provide target GPS location (decimal) when prompted")
-    target_lat = 45.51154476553373#float(input("Please provide target latitude :\n"))
-    target_long = -73.76447441328253#float(input("Target longitude:\n"))
-    target_alt = 25#float(input("Target altitude (for payload DROP) above sea level in meters :\n"))
+    target_lat = float(input("Please provide target latitude :\n"))
+    target_long = float(input("Target longitude:\n"))
+    target_alt = float(input("Target altitude (for payload DROP) above takeoff tarmac in meters :\n"))
     target_pos = [target_lat, target_long, target_alt]
 
     # getting vehicle initial position
@@ -190,7 +190,7 @@ if __name__ == "__main__":
                      vehicle.location.global_frame.lon]  # alt = 0 in plane RELATIVE frame
     to_heading = vehicle.heading
     # inserting Takeoff command in queue
-    draw()
+    
     time.sleep(5)
     cmds.append(takeoff(vehicle))
     time.sleep(2)
@@ -247,7 +247,7 @@ if __name__ == "__main__":
 
 
     time.sleep(2)
-
+    ####### Add listener for mission departure
 
     vehicle.mode = VehicleMode("TAKEOFF")
     while vehicle.mode!= VehicleMode("TAKEOFF"):
