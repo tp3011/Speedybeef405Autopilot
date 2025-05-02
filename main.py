@@ -7,8 +7,7 @@ import keyboard
 
 connection_string = "COM7"#"udp:127.0.0.1:14551"
 baud_rate = 57600
-print("This program works by iteration for now. Follow the instructions to complete the arming of the vehicle.\n"
-      "Press 'c' at any time to shutdown.")
+
 time.sleep(1)
 def check_GPS_status(vehicle):
     while vehicle.gps_0.fix_type == 1:
