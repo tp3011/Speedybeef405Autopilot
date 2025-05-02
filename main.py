@@ -29,7 +29,7 @@ def check_safety_param(vehicle):
     vehicle.parameters['TKOFF_THR_DELAY'] = 0
     vehicle.parameters['THR_MAX'] = 80
     vehicle.parameters['TKOFF_THR_MAX'] = 95
-    vehicle.parameters["TKOFF_LVL_ALT"] = 10
+    vehicle.parameters["TKOFF_LVL_ALT"] = 4
     vehicle.parameters["TKOFF_LVL_PITCH"] = 15
     vehicle.parameters["PTCH_LIM_MAX_DEG"] = 15
     vehicle.parameters["PTCH_LIM_MIN_DEG"] = -15
