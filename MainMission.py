@@ -64,7 +64,7 @@ def payload_drop(v, DLZ_coord):
                             0, 0,  # Target system, target component
                             mavutil.mavlink.MAV_CMD_DO_SET_SERVO,  # Command ID for SET_SERVO
                             0,  # Confirmation
-                            9,  # Servo output channel
+                            6,  # Servo output channel
                             1900,
                             0,0,0,0,0)  # PWM value (1000-2000 µs)
     drop_list.append(servo_command)
@@ -89,7 +89,7 @@ def payload_delivery(v, DLZ_coord):
                             0, 0,  # Target system, target component
                             mavutil.mavlink.MAV_CMD_DO_SET_SERVO,  # Command ID for SET_SERVO
                             0,  # Confirmation
-                            9,  # Servo output channel
+                            6,  # Servo output channel
                             1900,
                             0,0,0,0,0)  # PWM value (1000-2000 µs)
     delivery_list.append(servo_command)
@@ -226,7 +226,7 @@ if __name__ == "__main__":
                                    0, 0,  # Target system, target component
                                    mavutil.mavlink.MAV_CMD_DO_SET_SERVO,  # C
                                    0,  # Confirmation
-                                   9,  # Servo output channel
+                                   3,  # Servo output channel
                                    0,
                                    0,0,0,0,0)  # PWM value (1000-2000 µs)
 
